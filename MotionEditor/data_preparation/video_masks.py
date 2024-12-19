@@ -153,12 +153,12 @@ if __name__ == "__main__":
         '--data',
         type=str,
         help='dir for images: data/dir/images',
-        default="/root/video-edit/MotionEditor/data/case-23",
+        default="/root/video-edit/MotionEditor/data/case-62/jpgs",
         required=False,
     )
 
     parser.add_argument(
-        "--output_dir", "-o", type=str, default="/root/video-edit/MotionEditor/data/case-23/man.mask", required=False, help="output directory"
+        "--output_dir", "-o", type=str, default="/root/video-edit/MotionEditor/data_preparation/videos/collected_video1_frames/masks", required=False, help="output directory"
     )
 
     parser.add_argument("--config", type=str,
@@ -200,7 +200,9 @@ if __name__ == "__main__":
     predictor = SamPredictor(build_sam(checkpoint=sam_checkpoint).to(device))
 
     subfolder_path = args.data
-    images_subfolder_path = os.path.join(subfolder_path, "images")
+    # images_subfolder_path = os.path.join(subfolder_path, "images")
+    images_subfolder_path = subfolder_path
+    
     print(f"subfolder path: {subfolder_path}")
     print(f"images subfolder path: {images_subfolder_path}")
     mask_subfolder_path = os.path.join(subfolder_path, "masks")

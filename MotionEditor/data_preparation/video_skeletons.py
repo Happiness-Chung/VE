@@ -30,7 +30,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         '--data',
         type=str,
         help='dir for images: /root/video-edit/MotionEditor/data/case-8/target_images',
-        default="/root/video-edit/MotionEditor/data_preparation/fromMotionGPT",
+        default="/root/video-edit/MotionEditor/data_preparation/videos/frames11",
         required=False,
     )
 
@@ -53,8 +53,8 @@ def main():
     which_cond = opt.which_cond
 
     # outdir = opt.data.replace("images", which_cond) ## path of save
-    last_name = opt.data.split("/")[-1]
-    outdir = opt.data.replace(last_name, which_cond)  ## path of save
+    last_name = opt.data.split("/")[0]
+    outdir = "/root/video-edit/MotionEditor/data_preparation/videos/skeleton11"  ## path of save
     os.makedirs(outdir, exist_ok=True)
 
     opt.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -71,8 +71,9 @@ def main():
         fname = os.path.basename(cond_path).split('.')[0]  # *.jpg
         width, height = image.size
         if which_cond == 'depth':
-            new_w = width // 64 * 64
-            new_h = height // 64 * 64
+            new_w = 256
+            new_h = 256
+            # new_h = height // 64 * 64
             image = image.resize((new_w, new_h))
 
         if which_cond == 'openposefull':
