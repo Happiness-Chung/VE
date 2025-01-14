@@ -4,6 +4,8 @@ source ~/.bashrc
 apt-get update
 apt-get install -y libgl1-mesa-glx
 
+Diffusion: stable-diffusion-v1-5/stable-diffusion-v1-5
+
 # [linux & win] cuda 12.4 version
 pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu124
 
