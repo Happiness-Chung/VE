@@ -1,0 +1,10 @@
+export PYTHONPATH=$PYTHONPATH:/root/VE/MotionEditor/data_preparation/GroundedSAM/segment_anything/segment_anything
+source ~/.bashrc
+
+apt-get update
+apt-get install -y libgl1-mesa-glx
+
+# [linux & win] cuda 12.4 version
+pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu124
+
+# for spatial normalization: controlnet_2dadapter, unet에서 8이라고 되어있는 변수들을 1로 바꿔줌. image로 처리를 하기 위해서.
