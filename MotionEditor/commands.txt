@@ -10,3 +10,9 @@ Diffusion: stable-diffusion-v1-5/stable-diffusion-v1-5
 pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu124
 
 # for spatial normalization: controlnet_2dadapter, unet에서 8이라고 되어있는 변수들을 1로 바꿔줌. image로 처리를 하기 위해서.
+
+# github cli login
+apt update
+apt install gh -y
+gh auth login 하고 HTTP, PAT paste (repo, read:org, workflow 활성화)
+PAT: https://github.com/settings/tokens # 매번 새로 생성 해 줘야 함
