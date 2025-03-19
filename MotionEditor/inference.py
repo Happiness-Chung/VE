@@ -311,7 +311,9 @@ def main(
             LAYPER = 10
             temporal_editor = TemporalSelfAttentionControl(start_step=STEP, start_layer=LAYPER)
             regiter_temporal_attention_editor_diffusers(validation_pipeline, temporal_editor)
-            fully_editor = FullySelfAttentionControlMask(start_step=STEP, start_layer=LAYPER, ref_token_idx=train_index, cur_token_idx=validate_index, source_masks=source_masks, target_masks=None, rectangle_source_masks=None, mask_save_dir=None)
+            fully_editor = FullySelfAttentionControlMask(start_step=STEP, start_layer=LAYPER, ref_token_idx=train_index, cur_token_idx=validate_index, source_masks=source_masks, \
+                                                        protagonist = None, background = None, \
+                                                        target_masks=None, rectangle_source_masks=None, mask_save_dir=None)
             regiter_fully_attention_editor_diffusers(validation_pipeline, fully_editor)
 
             sample = validation_pipeline(prompts,
