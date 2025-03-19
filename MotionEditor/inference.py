@@ -100,7 +100,6 @@ def prepare_control(unet, prompts, validation_data):
 
 
 def main(
-    index: int,
     pretrained_model_path: str,
     output_dir: str,
     input_data: Dict,
@@ -120,7 +119,7 @@ def main(
 ):
     *_, config = inspect.getargvalues(inspect.currentframe())
 
-    input_data.video_dir = "data/case-{}".format(index+10)
+    # input_data.video_dir = "data/case-{}".format(index+10)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=gradient_accumulation_steps,
@@ -352,10 +351,8 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="./configs/case/motion_editor.yaml")
+    parser.add_argument("--config", type=str, default="./configs/case-1/eval-motion.yaml")
     args = parser.parse_args()
 
-    for i in range(14,16):
-        args.config = "./configs/case-1/eval-motion.yaml"
-        main(i, **OmegaConf.load(args.config))
+    main(**OmegaConf.load(args.config))
 
