@@ -330,7 +330,8 @@ class FullySelfAttentionControlMaskAuto(MutualSelfAttentionControl):
 
 class FullySelfAttentionControlMask(MutualSelfAttentionControl):
     def __init__(self, start_step=4, start_layer=10, layer_idx=None, step_idx=None, total_steps=50, thres=0.1,
-                 ref_token_idx=[1], cur_token_idx=[1], mask_save_dir=None, model_type="SD", source_masks=None,
+                 ref_token_idx=[1], cur_token_idx=[1], mask_save_dir=None, model_type="SD", source_masks=None, 
+                 protagonist = None, background = None,
                  target_masks=None, rectangle_source_masks=None):
         """
         Args:
@@ -360,6 +361,10 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         if self.mask_save_dir is not None:
             os.makedirs(self.mask_save_dir, exist_ok=True)
 
+        if len(protagonist) != 0:
+            self.protagonist = protagonist
+            self.background = background
+
         self.source_masks = None
         self.target_masks = None
         self.rectangle_source_masks = None
@@ -374,18 +379,31 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         Performing attention for a batch of queries, keys, and values
         """
 
-        num_frames = 8
+        num_frames = 5
         H = W = int(np.sqrt(q.shape[1]))
 
-        if self.source_masks is not None and kwargs.get("is_mask_attn"):
-            k_s_fg = k[:, :H*W*2]
+        # print("q.shape", q.shape) # torch.Size([40, 1024, 80]) # H = W = 32
+        # print("k.shape", k.shape) # torch.Size([40, 4096, 80])
+        # print("v.shape", v.shape) # torch.Size([40, 4096, 80])
+        # ~ torch.Size([40, :1024, 80]) : previous frame of the reconstruction branch 
+        # ~ torch.Size([40, 1024:2048, 80]) : current frame of the reconstruction branch 
+        # ~ torch.Size([40, 2048:3072, 80]) : previous frame of the editing branch
+        # ~ torch.Size([40, 3072:4096, 80]) : current frame of the editing branch  
+
+        if self.source_masks is not None and kwargs.get("is_mask_attn"): ###
+
+            k_s_fg = k[:, :H*W*2] 
             k_s_bg = k[:, :H*W*2]
             k_t = k[:, H * W * 3:]
             masks = self.source_masks
             curr_frame_index = torch.arange(num_frames)
             former_frame_index = torch.arange(num_frames) - 1
             former_frame_index[0] = 0
+
             masks = F.interpolate(masks, (num_frames, H, W), mode="nearest")
+            protagonist = F.interpolate(self.protagonist, (num_frames, 3, H, W), mode="nearest")
+            background = F.interpolate(self.background, (num_frames, 3, H, W), mode="nearest")
+            
             masks_prev = masks[:, :, former_frame_index]
             masks_cur = masks[:, :, curr_frame_index]
             k_s_fg_prev = k_s_fg[:, :H*W]
@@ -396,7 +414,17 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             k_s_fg_cur = rearrange(k_s_fg_cur, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
             k_s_fg_cur = k_s_fg_cur * masks_cur
             k_s_fg_cur = rearrange(k_s_fg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+
             k_s_fg = torch.cat([k_s_fg_prev, k_s_fg_cur], dim=1)
+            # print("shape of k_s_fg: ", k_s_fg.shape) 
+            # torch.Size([40, 2048, 80]) 80(c) 때문에 직접 이미지를 넣어주기는 어려울 것 같기도 하고.. 일단 킵.
+            # shape of protagonist torch.Size([1, 5, 8, 32, 32])
+            # print("shape of protagonist", protagonist.shape)
+            # protagonist = rearrange(protagonist, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            # shape of protagonist torch.Size([40, 1024, 1])
+            
+            # k_s_fg = torch.cat([protagonist[:,:,former_frame_index], protagonist[:,:,curr_frame_index]], dim=1)
+
             k_s_bg_prev = k_s_bg[:, :H * W]
             k_s_bg_cur = k_s_bg[:, H * W:]
             k_s_bg_prev = rearrange(k_s_bg_prev, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
@@ -406,11 +434,18 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             k_s_bg_cur = k_s_bg_cur * (1-masks_cur)
             k_s_bg_cur = rearrange(k_s_bg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
             k_s_bg = torch.cat([k_s_bg_prev, k_s_bg_cur], dim=1)
+
+            # k_s_bg = torch.cat([background[:,:,former_frame_index], background[:,:,curr_frame_index]], dim=1)
+
+            # k = torch.cat([k_s_fg, k_s_bg, k_t], dim=1)
             k = torch.cat([k_s_fg, k_s_bg, k_t], dim=1)
+
             v_s_fg = v[:, :H * W * 2]
             v_s_bg = v[:, :H * W * 2]
             v_t = v[:, H * W * 3:]
+            # v = torch.cat([v_s_bg, v_s_bg, v_t], dim=1)
             v = torch.cat([v_s_fg, v_s_bg, v_t], dim=1)
+
 
         query = q.contiguous()
         key = k.contiguous()
@@ -441,8 +476,19 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         qu_s, qu_t, qc_s, qc_t = q.chunk(4)
         ku_s, ku_t, kc_s, kc_t = k.chunk(4)
         vu_s, vu_t, vc_s, vc_t = v.chunk(4)
+        # u: unconditional, c: conditional (maybe classifier free guidance?)
+        # reconstruction branch forward
+        # q.shape torch.Size([40, 1024, 80])
+        # k.shape torch.Size([40, 2048, 80])
+        # v.shape torch.Size([40, 2048, 80])
         out_u_source = self.attn_batch(q=qu_s, k=ku_s, v=vu_s, is_cross=is_cross, place_in_unet=place_in_unet,num_heads=num_heads, is_mask_attn=False, attention_mask=attention_mask, **kwargs)
         out_c_source = self.attn_batch(q=qc_s, k=kc_s, v=vc_s, is_cross=is_cross, place_in_unet=place_in_unet,num_heads=num_heads, is_mask_attn=False, attention_mask=attention_mask,**kwargs)
+        # editing branch forward
+        # ku_s, kc_s: reconstruction branch
+        # ku_t, kc_t: editing branch
+        # q.shape torch.Size([40, 1024, 80])
+        # k.shape torch.Size([40, 4096, 80])
+        # v.shape torch.Size([40, 4096, 80])
         out_u_target = self.attn_batch(q=qu_t, k=torch.cat([ku_s, ku_t], dim=1), v=torch.cat([vu_s, vu_t], dim=1), is_cross=is_cross,place_in_unet=place_in_unet, num_heads=num_heads, is_mask_attn=True, cur_step=self.cur_step, attention_mask=attention_mask, **kwargs)
         out_c_target = self.attn_batch(q=qc_t, k=torch.cat([kc_s, kc_t], dim=1), v=torch.cat([vc_s, vc_t], dim=1), is_cross=is_cross,place_in_unet=place_in_unet, num_heads=num_heads, is_mask_attn=True, cur_step=self.cur_step, attention_mask=attention_mask, **kwargs)
 
@@ -457,6 +503,7 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             out_c_target = out_c_target_fg * masks + out_c_target_bg * (1 - masks)
 
         out = torch.cat([out_u_source, out_u_target, out_c_source, out_c_target], dim=0)
+        # out_u_target가 최종 아웃풋인것 같음.
         return out
 
 
