@@ -11,7 +11,7 @@ import imageio
 import random
 import cv2
 import numpy as np
-
+import os
 
 class VideoDataset(Dataset):
     def __init__(
@@ -42,6 +42,10 @@ class VideoDataset(Dataset):
         self.video_suffix = video_suffix
         self.condition_suffix = condition_suffix
         self.random_sample = random_sample
+        self.protagonist_path = osp.join(self.video_dir, 'protagonist_condition')
+        self.background_path = osp.join(self.video_dir, 'background_condition')
+        print(self.protagonist_path)
+        print(self.background_path)
 
         self.source_mask_dir = source_mask_dir
         if source_mask_dir:
@@ -91,6 +95,8 @@ class VideoDataset(Dataset):
         source_conditions = {_condition: [] for _condition in self.condition}
         target_conditions = {_condition: [] for _condition in self.condition}
         source_mask = []
+        protagonist = []
+        background = []
 
         if self.random_sample:
             start_index = random.randint(0, len(video_indices) - self.n_sample_frames)  ## [a,b] include both
@@ -105,6 +111,14 @@ class VideoDataset(Dataset):
                 _source_mask /= 255  # 0 and 1
             else:
                 _source_mask = np.ones(_frame.shape[:2])
+
+            # print('os.path.exists(self.protagonist_path)', os.path.exists(self.protagonist_path))
+            if os.path.exists(self.protagonist_path and self.background_path):
+                # print(osp.join(self.protagonist_path, self.frame_list[_f_idx] + '.png'))
+                _protagonist = imageio.imread(osp.join(self.protagonist_path, self.frame_list[_f_idx] + '.png'))
+                _background = imageio.imread(osp.join(self.background_path, self.frame_list[_f_idx] + '.png'))
+                protagonist.append(_protagonist)
+                background.append(_background)
 
             video.append(_frame)
             source_mask.append(_source_mask)
@@ -122,6 +136,17 @@ class VideoDataset(Dataset):
         video = rearrange(video, "f h w c -> f c h w")
         video = F.interpolate(video, size=(self.height, self.width), mode='bilinear')
 
+        if os.path.exists(self.protagonist_path):
+            protagonist = torch.from_numpy(np.stack(protagonist, axis=0)).float()  # f,h,w,c
+            protagonist = rearrange(protagonist, "f h w c -> f c h w")
+            protagonist = F.interpolate(protagonist, size=(self.height, self.width), mode='bilinear')
+            protagonist = protagonist / 127.5 - 1.0
+
+            background = torch.from_numpy(np.stack(background, axis=0)).float()  # f,h,w,c
+            background = rearrange(background, "f h w c -> f c h w")
+            background = F.interpolate(background, size=(self.height, self.width), mode='bilinear')
+            background = background / 127.5 - 1.0
+
         source_conditions_transform = {}
         for _control_type, condition in source_conditions.items():
             condition = torch.from_numpy(np.stack(condition, axis=0)).float()  # f,h,w,c
@@ -137,6 +162,7 @@ class VideoDataset(Dataset):
             target_conditions_transform[_control_type] = condition / 255
 
         source_mask = torch.from_numpy(np.stack(source_mask, axis=0)).float()  # f,h,w
+        print(source_mask.shape)
         source_mask = rearrange(source_mask[:, :, :, None], "f h w c -> f c h w")
         source_mask = F.interpolate(source_mask, size=(self.height, self.width), mode='nearest')
 
@@ -144,6 +170,8 @@ class VideoDataset(Dataset):
             "pixel_values": (video / 127.5 - 1.0),
             "source_conditions": source_conditions_transform,
             "target_conditions": target_conditions_transform,
+            "protagonists": protagonist,
+            "backgrounds": background,
             "prompt_ids": self.prompt_ids,
             "source_masks": source_mask,
             "sample_indices": torch.LongTensor(sample_index),
