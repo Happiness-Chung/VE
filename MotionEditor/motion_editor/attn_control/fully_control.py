@@ -330,7 +330,8 @@ class FullySelfAttentionControlMaskAuto(MutualSelfAttentionControl):
 
 class FullySelfAttentionControlMask(MutualSelfAttentionControl):
     def __init__(self, start_step=4, start_layer=10, layer_idx=None, step_idx=None, total_steps=50, thres=0.1,
-                 ref_token_idx=[1], cur_token_idx=[1], mask_save_dir=None, model_type="SD", source_masks=None,
+                 ref_token_idx=[1], cur_token_idx=[1], mask_save_dir=None, model_type="SD", source_masks=None, 
+                 protagonist = None, background = None,
                  target_masks=None, rectangle_source_masks=None):
         """
         Args:
@@ -360,6 +361,9 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         if self.mask_save_dir is not None:
             os.makedirs(self.mask_save_dir, exist_ok=True)
 
+        self.protagonist = protagonist
+        self.background = background
+
         self.source_masks = None
         self.target_masks = None
         self.rectangle_source_masks = None
@@ -369,25 +373,106 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         else:
             print(1/0)
 
+    def blend_tensor_bg(self, target, input_tensor):
+        B, _, C = target.shape            # 예: (40, 2048, 80)
+        N, _, D = input_tensor.shape      # 예: (5, 2048, 3)
+
+        # 🔁 Step 1: (N, 2048, D) → (B, 2048, D)
+        if B % N == 0:
+            input_expanded = input_tensor.repeat(B // N, 1, 1)
+        else:
+            input_expanded = input_tensor.expand(B, -1, -1)
+
+        # ✅ Step 2: D의 배수이면서 C//2 이하인 K 계산
+        K_raw = C // 5
+        K = (K_raw // D) * D
+        if K == 0:
+            print("Warning ⚠️: C too small for even one D-size chunk")
+            return target
+
+        # 🎯 Step 3: C 차원 중 K개 랜덤 선택
+        indices = torch.randperm(C)[:K]
+
+        # 📐 Step 4: D → K로 확장 (반복 후 자르기)
+        input_expanded_k = input_expanded.repeat(1, 1, K // D)  # (B, 2048, K)
+
+        # 🔄 Step 5: Replace
+        target[:, :, indices] = input_expanded_k
+
+        return target
+
+    def blend_tensor(self, target, input_tensor):
+        B, _, C = target.shape            # 예: (40, 2048, 80)
+        N, _, D = input_tensor.shape      # 예: (5, 2048, 3)
+
+        # 🔁 Step 1: (N, 2048, D) → (B, 2048, D)
+        if B % N == 0:
+            input_expanded = input_tensor.repeat(B // N, 1, 1)
+        else:
+            input_expanded = input_tensor.expand(B, -1, -1)
+
+        # ✅ Step 2: D의 배수이면서 C//2 이하인 K 계산
+        K_raw = C // 3
+        K = (K_raw // D) * D
+        if K == 0:
+            print("Warning ⚠️: C too small for even one D-size chunk")
+            return target
+
+        # 🎯 Step 3: C 차원 중 K개 랜덤 선택
+        indices = torch.randperm(C)[:K]
+
+        # 📐 Step 4: D → K로 확장 (반복 후 자르기)
+        input_expanded_k = input_expanded.repeat(1, 1, K // D)  # (B, 2048, K)
+
+        # 🔄 Step 5: Replace
+        target[:, :, indices] = input_expanded_k
+
+        return target
+
     def attn_batch(self, q, k, v, num_heads, sim=None, attn=None, is_cross=None, place_in_unet=None, attention_mask=None, **kwargs):
         """
         Performing attention for a batch of queries, keys, and values
         """
 
-        num_frames = 8
+        num_frames = 5
         H = W = int(np.sqrt(q.shape[1]))
 
-        if self.source_masks is not None and kwargs.get("is_mask_attn"):
-            k_s_fg = k[:, :H*W*2]
+        # print("q.shape", q.shape) # torch.Size([40, 1024, 80]) # H = W = 32
+        # print("k.shape", k.shape) # torch.Size([40, 4096, 80])
+        # print("v.shape", v.shape) # torch.Size([40, 4096, 80])
+        # ~ torch.Size([40, :1024, 80]) : previous frame of the reconstruction branch 
+        # ~ torch.Size([40, 1024:2048, 80]) : current frame of the reconstruction branch 
+        # ~ torch.Size([40, 2048:3072, 80]) : previous frame of the editing branch
+        # ~ torch.Size([40, 3072:4096, 80]) : current frame of the editing branch  
+
+        if self.source_masks is not None and kwargs.get("is_mask_attn"): ###
+
+            k_s_fg = k[:, :H*W*2] 
             k_s_bg = k[:, :H*W*2]
             k_t = k[:, H * W * 3:]
             masks = self.source_masks
             curr_frame_index = torch.arange(num_frames)
             former_frame_index = torch.arange(num_frames) - 1
             former_frame_index[0] = 0
+
             masks = F.interpolate(masks, (num_frames, H, W), mode="nearest")
+            
+            if self.protagonist is not None:
+                # shape of protagonist before interpolation torch.Size([1, 5, 3, 512, 512])
+                protagonist = F.interpolate(self.protagonist.squeeze(0), (H, W), mode="bicubic")
+                background = F.interpolate(self.background.squeeze(0), (H, W), mode="bicubic")
+            
             masks_prev = masks[:, :, former_frame_index]
             masks_cur = masks[:, :, curr_frame_index]
+
+            if self.protagonist is not None:
+                protagonist_prev = protagonist[former_frame_index].permute(0, 2, 3, 1).view(5, H*W, 3) # 5 x 1024 x 3
+                protagonist_curr = protagonist[curr_frame_index].permute(0, 2, 3, 1).view(5, H*W, 3)
+                protagonist = torch.cat((protagonist_prev, protagonist_curr), dim=1) # 1 x 2048 x 3
+                background_prev = background[former_frame_index].permute(0, 2, 3, 1).view(5, H*W, 3)
+                background_curr = background[curr_frame_index].permute(0, 2, 3, 1).view(5, H*W, 3)
+                background = torch.cat((background_prev, background_curr), dim=1)
+
             k_s_fg_prev = k_s_fg[:, :H*W]
             k_s_fg_cur = k_s_fg[:, H*W:]
             k_s_fg_prev = rearrange(k_s_fg_prev, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
@@ -396,7 +481,19 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             k_s_fg_cur = rearrange(k_s_fg_cur, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
             k_s_fg_cur = k_s_fg_cur * masks_cur
             k_s_fg_cur = rearrange(k_s_fg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+
             k_s_fg = torch.cat([k_s_fg_prev, k_s_fg_cur], dim=1)
+            
+            # print("shape of k_s_fg: ", k_s_fg.shape) 
+            # torch.Size([40, 2048, 80]) 80(c) 때문에 직접 이미지를 넣어주기는 어려울 것 같기도 하고.. 일단 킵.
+            # shape of protagonist torch.Size([1, 5, 8, 32, 32])
+            # print("shape of protagonist", protagonist.shape)
+            # protagonist = rearrange(protagonist, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            # k_s_fg[:, :,]
+            # shape of protagonist torch.Size([40, 1024, 1])
+            
+            # k_s_fg = torch.cat([protagonist[:,:,former_frame_index], protagonist[:,:,curr_frame_index]], dim=1)
+
             k_s_bg_prev = k_s_bg[:, :H * W]
             k_s_bg_cur = k_s_bg[:, H * W:]
             k_s_bg_prev = rearrange(k_s_bg_prev, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
@@ -406,11 +503,43 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             k_s_bg_cur = k_s_bg_cur * (1-masks_cur)
             k_s_bg_cur = rearrange(k_s_bg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
             k_s_bg = torch.cat([k_s_bg_prev, k_s_bg_cur], dim=1)
-            k = torch.cat([k_s_fg, k_s_bg, k_t], dim=1)
+            
+            if self.protagonist is not None:
+                k_s_fg = self.blend_tensor(k_s_fg, protagonist) #####################
+                k_s_bg = self.blend_tensor_bg(k_s_bg, background) # #######################
+  
+            k = torch.cat([k_s_fg, k_t, k_t], dim=1)
+            # k = torch.cat([k_s_fg, k_s_fg, k_t], dim=1)
+
             v_s_fg = v[:, :H * W * 2]
             v_s_bg = v[:, :H * W * 2]
             v_t = v[:, H * W * 3:]
-            v = torch.cat([v_s_fg, v_s_bg, v_t], dim=1)
+            v_s_fg_prev = v_s_fg[:, :H*W]
+            v_s_fg_cur = v_s_fg[:, H*W:]
+            v_s_fg_prev = rearrange(v_s_fg_prev, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
+            v_s_fg_prev = v_s_fg_prev * masks_prev
+            v_s_fg_prev = rearrange(v_s_fg_prev, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            v_s_fg_cur = rearrange(v_s_fg_cur, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
+            v_s_fg_cur = v_s_fg_cur * masks_cur
+            v_s_fg_cur = rearrange(v_s_fg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            v_s_fg = torch.cat([v_s_fg_prev, v_s_fg_cur], dim=1)
+            v_s_bg_prev = v_s_bg[:, :H * W]
+            v_s_bg_cur = v_s_bg[:, H * W:]
+            v_s_bg_prev = rearrange(v_s_bg_prev, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
+            v_s_bg_prev = v_s_bg_prev * (1-masks_prev)
+            v_s_bg_prev = rearrange(v_s_bg_prev, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            v_s_bg_cur = rearrange(v_s_bg_cur, "(b f) (h w) c -> b c f h w", f=num_frames, h=H, w=W)
+            v_s_bg_cur = v_s_bg_cur * (1-masks_cur)
+            v_s_bg_cur = rearrange(v_s_bg_cur, "b c f h w -> (b f) (h w) c", f=num_frames, h=H, w=W)
+            v_s_bg = torch.cat([v_s_bg_prev, v_s_bg_cur], dim=1)
+            # v = torch.cat([v_s_bg, v_s_bg, v_t], dim=1)
+
+            if self.protagonist is not None:
+                v_s_fg = self.blend_tensor(v_s_fg, protagonist) #####################
+                v_s_bg = self.blend_tensor_bg(v_s_bg, background) # #######################
+
+            v = torch.cat([v_s_fg, v_t, v_t], dim=1)
+
 
         query = q.contiguous()
         key = k.contiguous()
@@ -441,8 +570,19 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
         qu_s, qu_t, qc_s, qc_t = q.chunk(4)
         ku_s, ku_t, kc_s, kc_t = k.chunk(4)
         vu_s, vu_t, vc_s, vc_t = v.chunk(4)
+        # u: unconditional, c: conditional (maybe classifier free guidance?)
+        # reconstruction branch forward
+        # q.shape torch.Size([40, 1024, 80])
+        # k.shape torch.Size([40, 2048, 80])
+        # v.shape torch.Size([40, 2048, 80])
         out_u_source = self.attn_batch(q=qu_s, k=ku_s, v=vu_s, is_cross=is_cross, place_in_unet=place_in_unet,num_heads=num_heads, is_mask_attn=False, attention_mask=attention_mask, **kwargs)
         out_c_source = self.attn_batch(q=qc_s, k=kc_s, v=vc_s, is_cross=is_cross, place_in_unet=place_in_unet,num_heads=num_heads, is_mask_attn=False, attention_mask=attention_mask,**kwargs)
+        # editing branch forward
+        # ku_s, kc_s: reconstruction branch
+        # ku_t, kc_t: editing branch
+        # q.shape torch.Size([40, 1024, 80])
+        # k.shape torch.Size([40, 4096, 80])
+        # v.shape torch.Size([40, 4096, 80])
         out_u_target = self.attn_batch(q=qu_t, k=torch.cat([ku_s, ku_t], dim=1), v=torch.cat([vu_s, vu_t], dim=1), is_cross=is_cross,place_in_unet=place_in_unet, num_heads=num_heads, is_mask_attn=True, cur_step=self.cur_step, attention_mask=attention_mask, **kwargs)
         out_c_target = self.attn_batch(q=qc_t, k=torch.cat([kc_s, kc_t], dim=1), v=torch.cat([vc_s, vc_t], dim=1), is_cross=is_cross,place_in_unet=place_in_unet, num_heads=num_heads, is_mask_attn=True, cur_step=self.cur_step, attention_mask=attention_mask, **kwargs)
 
@@ -457,6 +597,7 @@ class FullySelfAttentionControlMask(MutualSelfAttentionControl):
             out_c_target = out_c_target_fg * masks + out_c_target_bg * (1 - masks)
 
         out = torch.cat([out_u_source, out_u_target, out_c_source, out_c_target], dim=0)
+        # out_u_target가 최종 아웃풋인것 같음.
         return out
 
 
