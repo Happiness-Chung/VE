@@ -100,7 +100,6 @@ def prepare_control(unet, prompts, validation_data):
 
 
 def main(
-    index: int,
     pretrained_model_path: str,
     output_dir: str,
     input_data: Dict,
@@ -120,7 +119,7 @@ def main(
 ):
     *_, config = inspect.getargvalues(inspect.currentframe())
 
-    input_data.video_dir = "data/case-{}".format(index+10)
+    # input_data.video_dir = "data/case-{}".format(index+10)
 
     accelerator = Accelerator(
         gradient_accumulation_steps=gradient_accumulation_steps,
@@ -236,7 +235,6 @@ def main(
     logger.info(f"  Total input batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     global_step = 0
 
-
     accelerator.load_state(resume_from_checkpoint)
     controlnet_adapter_weight_path = adapter_weight_path
     controlnet_adapter_weight = torch.load(controlnet_adapter_weight_path)
@@ -255,6 +253,13 @@ def main(
         edited_sample_imgs = []
         reconstruct_sample_imgs = []
         pixel_values = batch["pixel_values"].to(weight_dtype)
+        if len(batch["protagonists"]) != 0:
+            protagonists = batch["protagonists"].to(weight_dtype)
+            backgrounds = batch["backgrounds"].to(weight_dtype)
+        else:
+            protagonists = None
+            backgrounds = None
+            
         # save input video 
         video = (pixel_values / 2 + 0.5).clamp(0, 1).detach().cpu()
         video = video.permute(0, 2, 1, 3, 4)  # (b, f, c, h, w)
@@ -311,7 +316,9 @@ def main(
             LAYPER = 10
             temporal_editor = TemporalSelfAttentionControl(start_step=STEP, start_layer=LAYPER)
             regiter_temporal_attention_editor_diffusers(validation_pipeline, temporal_editor)
-            fully_editor = FullySelfAttentionControlMask(start_step=STEP, start_layer=LAYPER, ref_token_idx=train_index, cur_token_idx=validate_index, source_masks=source_masks, target_masks=None, rectangle_source_masks=None, mask_save_dir=None)
+            fully_editor = FullySelfAttentionControlMask(start_step=STEP, start_layer=LAYPER, ref_token_idx=train_index, cur_token_idx=validate_index, source_masks=source_masks, \
+                                                        protagonist = protagonists, background = backgrounds, \
+                                                        target_masks=None, rectangle_source_masks=None, mask_save_dir=None)
             regiter_fully_attention_editor_diffusers(validation_pipeline, fully_editor)
 
             sample = validation_pipeline(prompts,
@@ -328,8 +335,8 @@ def main(
             assert sample.shape[0] == 2
             sample_inv, sample_gen = sample.chunk(2)
             # add input for vis
-            save_videos_grid(sample_gen, f"{output_dir}/sample{index}/{prompts[1]}.gif", fps=fps)
-            save_videos_grid(sample_inv, f"{output_dir}/sample{index}/{prompts[1]}-inv.gif", fps=fps)
+            save_videos_grid(sample_gen, f"{output_dir}/{prompts[1]}.gif", fps=fps)
+            save_videos_grid(sample_inv, f"{output_dir}/{prompts[1]}-inv.gif", fps=fps)
             samples.append(sample_gen)
             sample_reconstruct.append(sample_inv)
             edited_sample_imgs.append(sample_gen)
@@ -348,10 +355,8 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="./configs/case/motion_editor.yaml")
+    parser.add_argument("--config", type=str, default="./configs/case-2/eval-motion.yaml")
     args = parser.parse_args()
 
-    for i in range(14,16):
-        args.config = "./configs/case-1/eval-motion.yaml"
-        main(i, **OmegaConf.load(args.config))
+    main(**OmegaConf.load(args.config))
 
