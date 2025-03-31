@@ -30,7 +30,7 @@ def get_base_argument_parser() -> argparse.ArgumentParser:
         '--data',
         type=str,
         help='dir for images: /root/video-edit/MotionEditor/data/case-8/target_images',
-        default="/root/video-edit/MotionEditor/data_preparation/videos/frames11",
+        default="/root/VE/MotionEditor/data/send/MotionPrior/7/target_images",
         required=False,
     )
 
@@ -54,7 +54,7 @@ def main():
 
     # outdir = opt.data.replace("images", which_cond) ## path of save
     last_name = opt.data.split("/")[0]
-    outdir = "/root/video-edit/MotionEditor/data_preparation/videos/skeleton11"  ## path of save
+    outdir = "/root/VE/MotionEditor/data/send/MotionPrior/7/target_condition/opensourcefull"  ## path of save
     os.makedirs(outdir, exist_ok=True)
 
     opt.device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")

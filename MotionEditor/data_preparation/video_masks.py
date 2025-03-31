@@ -153,24 +153,24 @@ if __name__ == "__main__":
         '--data',
         type=str,
         help='dir for images: data/dir/images',
-        default="/root/video-edit/MotionEditor/data/case-62/jpgs",
+        default="/root/VE/MotionEditor/data/send/MotionPrior/7/jpgs",
         required=False,
     )
 
     parser.add_argument(
-        "--output_dir", "-o", type=str, default="/root/video-edit/MotionEditor/data_preparation/videos/collected_video1_frames/masks", required=False, help="output directory"
+        "--output_dir", "-o", type=str, default="/root/VE/MotionEditor/data_preparation/videos/collected_video1_frames/masks", required=False, help="output directory"
     )
 
     parser.add_argument("--config", type=str,
-                        default="/root/video-edit/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/groundingdino/config/GroundingDINO_SwinB.cfg.py",
+                        default="/root/VE/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/groundingdino/config/GroundingDINO_SwinB.cfg.py",
                         help="path to config file")
 
     parser.add_argument(
-        "--grounded_checkpoint", type=str, default="/root/video-edit/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/checkpoints/groundingdino_swinb_cogcoor.pth",
+        "--grounded_checkpoint", type=str, default="/root/VE/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/groundingdino/checkpoints/groundingdino_swinb_cogcoor.pth",
         help="path to checkpoint file"
     )
     parser.add_argument(
-        "--sam_checkpoint", type=str, default="/root/video-edit/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/checkpoints/sam_vit_h_4b8939.pth", help="path to checkpoint file"
+        "--sam_checkpoint", type=str, default="/root/VE/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/groundingdino/checkpoints/sam_vit_h_4b8939.pth", help="path to checkpoint file"
     )
 
     parser.add_argument("--box_threshold", type=float, default=0.3, help="box threshold")

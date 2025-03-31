@@ -20,7 +20,7 @@ def rename_files_in_folder(folder_path, start_number=10):
         print(f"Renamed {src} to {dst}")
 
 # 사용할 폴더 경로 (사용자가 바꿀 경로를 설정)
-folder_path = '/root/video-edit/MotionEditor/data/case-62/source_condition/openposefull'
+folder_path = '/root/VE/MotionEditor/data/case-79/images'
 
 # 파일 이름을 0010.png부터 변경
 rename_files_in_folder(folder_path, start_number=0)

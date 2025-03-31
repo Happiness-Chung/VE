@@ -26,8 +26,8 @@ def convert_png_to_jpg(folder_path, new_folder_path):
             print(f"Converted {png_file} to {jpg_file}")
 
 # 사용할 폴더 경로 (사용자가 바꿀 경로를 설정)
-folder_path = "/root/video-edit/MotionEditor/data/case-62/images"
-new_folder_path = "/root/video-edit/MotionEditor/data/case-62/jpgs"
+folder_path = "/root/VE/MotionEditor/data/send/MotionPrior/7/target_images"
+new_folder_path = "/root/VE/MotionEditor/data/send/MotionPrior/7/jpgs"
 
 # PNG -> JPG 변환 함수 실행
 convert_png_to_jpg(folder_path, new_folder_path)

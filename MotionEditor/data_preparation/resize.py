@@ -2,15 +2,15 @@ import os
 from PIL import Image
 
 # 이미지 파일이 있는 폴더 경로를 지정
-input_folder = 'MotionEditor/data/case-46/target_images'  # 여기에 폴더 경로를 입력하세요
-output_folder = 'MotionEditor/data/case-46/target_images'  # 리사이즈된 이미지를 저장할 폴더
+input_folder = '/root/VE/MotionEditor/data/case-67/target_images'  # 여기에 폴더 경로를 입력하세요
+output_folder = '/root/VE/MotionEditor/data/case-71/target_images'  # 리사이즈된 이미지를 저장할 폴더
 
 # 출력 폴더가 없으면 생성
 if not os.path.exists(output_folder):
     os.makedirs(output_folder)
 
 # 원하는 크기 설정 (256 x 256)
-resize_size = (512, 512)
+resize_size = (256, 256)
 
 # 폴더 내의 모든 파일을 처리
 for filename in os.listdir(input_folder):
