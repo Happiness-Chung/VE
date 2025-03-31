@@ -1,12 +1,38 @@
+Diffusion: stable-diffusion-v1-5/stable-diffusion-v1-5
+
 export PYTHONPATH=$PYTHONPATH:/root/VE/MotionEditor/data_preparation/GroundedSAM/segment_anything/segment_anything
 source ~/.bashrc
+
+pip install -r requirements.txt
 
 apt-get update
 apt-get install -y libgl1-mesa-glx
 
-Diffusion: stable-diffusion-v1-5/stable-diffusion-v1-5
-
 # [linux & win] cuda 12.4 version
 pip3 install -U xformers --index-url https://download.pytorch.org/whl/cu124
+pip uninstall torch torchvision
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
-# for spatial normalization: controlnet_2dadapter, unet에서 8이라고 되어있는 변수들을 1로 바꿔줌. image로 처리를 하기 위해서.
+# for frame number change: controlnet_adapter, fully_control 에서 8이라고 되어있는 변수들을 1로 바꿔줌. image로 처리를 하기 위해서.
+
+# github cli login
+apt update
+apt install gh -y
+gh auth login 하고 HTTP, PAT paste (repo, read:org, workflow 활성화)
+PAT: https://github.com/settings/tokens # 매번 새로 생성 해 줘야 함
+git config --global user.email "hb0522@snu.ac.kr"
+git config --global user.name "haengbok-chung"
+
+# Inpaint segment_anything
+pip install -e segment_anything
+pip install -r lama/requirements.txt
+pip install jpeg4py lmdb
+pip uninstall -y scikit-image numpy
+pip install numpy==1.23.5 scikit-image==0.19.3
+pip install imageio[ffmpeg]
+bash script/remove_anything_video.sh
+
+# segmente anything in MotionEditor
+cd /root/VE/MotionEditor/data_preparation/GroundedSAM/GroundingDINO/groundingdino
+python setup.py build_ext --inplace
